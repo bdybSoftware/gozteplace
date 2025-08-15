@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Overlay",
+  "imageUrl": "https://raw.githubusercontent.com/bdybSoftware/konvert-privacy/refs/heads/main/goztepelogo.png",
+  "pixelUrl": "https://backend.wplace.live/s0/pixel/1177/786?x=901&y=955",
+  "offsetX": 0,
+  "offsetY": 0,
+  "opacity": 0.7
+}

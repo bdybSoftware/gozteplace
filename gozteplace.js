@@ -2510,7 +2510,7 @@
                 <button class="op-button" id="op-add-overlay" title="Create a new overlay">+ Add</button>
                 <button class="op-button" id="op-import-overlay" title="Import overlay JSON">Import</button>
                 <button class="op-button" id="op-export-overlay" title="Export active overlay JSON">Export</button>
-                <button class="op-button" id="op-flash-pixels" title="Flash mismatching pixels" style="background: #ff6b6b; color: white;">Flash</button>
+                <button class="op-button" id="op-goto-pixel" title="Go to pixel location" style="background: #4CAF50; color: white;">Go to Pixel</button>
                 <button class="op-chevron" id="op-collapse-list" title="Collapse/Expand">\u25BE</button>
               </div>
             </div>
@@ -2727,63 +2727,97 @@
     return Promise.reject(new Error("Clipboard API not available"));
   }
   
-  // Flash mismatching pixels function
-  // This temporarily switches to minify mode to highlight mismatching pixels
-  async function flashMismatchingPixels() {
+  // Go to pixel location function
+  // This simulates a click on the canvas at the pixel coordinates from the overlay
+  function goToPixelLocation() {
     const activeOverlay = getActiveOverlay();
     if (!activeOverlay || !activeOverlay.enabled) {
       showToast("No active overlay found. Please select an overlay first.", "error");
       return;
     }
     
-    // Store current mode
-    const originalMode = config.overlayMode;
-    const originalMinifyStyle = config.minifyStyle;
+    if (!activeOverlay.pixelUrl) {
+      showToast("No pixel URL found in overlay. Please ensure the overlay has a pixelUrl.", "error");
+      return;
+    }
     
     try {
-      // Show loading toast
-      showToast("Flashing mismatching pixels...", "info", 500);
+      // Parse coordinates from pixelUrl
+      // Example: "https://backend.wplace.live/s0/pixel/1177/786?x=901&y=955"
+      const url = new URL(activeOverlay.pixelUrl);
+      const x = parseInt(url.searchParams.get('x'));
+      const y = parseInt(url.searchParams.get('y'));
       
-      // Switch to minify mode temporarily to show mismatching pixels
-      config.overlayMode = "minify";
-      config.minifyStyle = "dots"; // Use dots for cleaner visual
-      
-      // Clear cache and refresh
-      clearOverlayCache();
-      ensureHook();
-      
-      // Flash effect: quickly toggle between minify and original modes
-      for (let i = 0; i < 6; i++) {
-        await new Promise(resolve => setTimeout(resolve, 250));
-        
-        if (i % 2 === 0) {
-          config.overlayMode = originalMode;
-        } else {
-          config.overlayMode = "minify";
-        }
-        
-        clearOverlayCache();
-        ensureHook();
+      if (isNaN(x) || isNaN(y)) {
+        showToast("Invalid coordinates in pixel URL", "error");
+        return;
       }
       
-      // Return to original mode
-      config.overlayMode = originalMode;
-      config.minifyStyle = originalMinifyStyle;
-      clearOverlayCache();
-      ensureHook();
+      // Find the canvas element - try multiple selectors
+      let canvas = document.querySelector('canvas#canvas') || // Try specific ID first
+                   document.querySelector('canvas.main-canvas') || // Try class
+                   document.querySelector('canvas[width][height]') || // Try canvas with dimensions
+                   document.querySelector('canvas'); // Fallback to any canvas
       
-      showToast("Flash complete! Mismatching pixels highlighted.", "success");
+      if (!canvas) {
+        showToast("Canvas not found on page", "error");
+        return;
+      }
+      
+      // Get canvas bounding rect for coordinate conversion
+      const rect = canvas.getBoundingClientRect();
+      const canvasWidth = canvas.width || rect.width;
+      const canvasHeight = canvas.height || rect.height;
+      
+      // Convert world coordinates to canvas coordinates if needed
+      // This might need adjustment based on wplace.live's coordinate system
+      let canvasX = x;
+      let canvasY = y;
+      
+      // If coordinates are outside canvas bounds, they might be world coordinates
+      if (x > canvasWidth || y > canvasHeight) {
+        // Try to calculate relative position within visible canvas area
+        canvasX = x % canvasWidth;
+        canvasY = y % canvasHeight;
+      }
+      
+      // Calculate screen coordinates for the click
+      const screenX = rect.left + canvasX;
+      const screenY = rect.top + canvasY;
+      
+      showToast(`Clicking pixel at coordinates (${x}, ${y}) -> canvas (${canvasX}, ${canvasY})...`, "info", 2000);
+      
+      // Create and dispatch multiple events to ensure detection
+      const events = ['mousedown', 'mouseup', 'click'];
+      
+      events.forEach(eventType => {
+        const event = new MouseEvent(eventType, {
+          bubbles: true,
+          cancelable: true,
+          clientX: screenX,
+          clientY: screenY,
+          button: 0,
+          buttons: eventType === 'mousedown' ? 1 : 0
+        });
+        
+        canvas.dispatchEvent(event);
+      });
+      
+      // Also try dispatching on the parent element in case canvas is wrapped
+      if (canvas.parentElement) {
+        const clickEvent = new MouseEvent('click', {
+          bubbles: true,
+          cancelable: true,
+          clientX: screenX,
+          clientY: screenY,
+          button: 0
+        });
+        canvas.parentElement.dispatchEvent(clickEvent);
+      }
       
     } catch (error) {
-      console.error("Error during flash:", error);
-      
-      // Ensure we restore original settings even if there's an error
-      config.overlayMode = originalMode;
-      config.minifyStyle = originalMinifyStyle;
-      clearOverlayCache();
-      ensureHook();
-      
-      showToast("Error during flash: " + error.message, "error");
+      console.error("Error simulating pixel click:", error);
+      showToast("Error simulating click: " + error.message, "error");
     }
   }
   function addEventListeners(panel) {
@@ -2852,8 +2886,8 @@
     });
     $("op-export-overlay").addEventListener("click", () => exportActiveOverlayToClipboard());
     
-    // Flash mismatching pixels functionality
-    $("op-flash-pixels").addEventListener("click", () => flashMismatchingPixels());
+    // Go to pixel location functionality
+    $("op-goto-pixel").addEventListener("click", () => goToPixelLocation());
     $("op-collapse-list").addEventListener("click", () => {
       config.collapseList = !config.collapseList;
       saveConfig(["collapseList"]);
